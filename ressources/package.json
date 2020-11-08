@@ -1,7 +1,7 @@
 {
-  "name": "temporaryFiles",
+  "name": "thingy-byte-utils",
   "version": "0.0.1",
-  "description": "",
+  "description": "Some utility functions for transforming bytes to other representations.",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
@@ -9,16 +9,13 @@
   "keywords": [],
   "author": "Lenard Frommelt lenard.frommelt@gne.or.at",
   "license": "Unlicense",
-  "bin": {
-    "temporaryFiles": "./index.js"
-  },
   "repository": {
     "type": "git",
-    "url": "git+https://.git"
+    "url": "git+https://github.com/JhonnyJason/thingy-byte-utils-output.git"
   },
   "bugs": {
-    "url": "https://"
+    "url": "https://github.com/JhonnyJason/thingy-byte-utils/issues"
   },
-  "homepage": "https://",
+  "homepage": "https://github.com/JhonnyJason/thingy-byte-utils-output/#readme",
   "dependencies": {}
 }

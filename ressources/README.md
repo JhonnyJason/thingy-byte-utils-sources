@@ -1,33 +1,30 @@
-# noname - 
+# thingy-byte-utils 
 
 # Why?
+My usecases only required a minmal subset ot byte utility functions so I decided to create a more lightweight package for exactly those purposes.
 
 # What?
-
-# How?
-Requirements
-------------
-
-Installation
-------------
-
-
-Usage
------
-
+- A very minimal package for byte handling
+- Uses native Buffer functions for NodeJS - then we also receive a Buffer Object as return value
+- Uses native BigInt
 
 Current Functionality
 ---------------------
 
+```coffeescript
+tbut = require("thingy-byte-utils") 
 
----
+tbut.bytesToBigInt( ArrayBuffer | Buffer | Uint8Array ) -> BigInt
 
-# Further steps
+tbut.hexToBytes( String ) -> ArrayBuffer | Buffer
+tbut.bytesToHex( ArrayBuffer | Buffer | Uint8Array ) -> String
 
-- ...
+tbut.utf8ToBytes( String ) -> ArrayBuffer | Buffer
+tbut.bytesToUtf8( ArrayBuffer | Buffer | Uint8Array ) -> String
 
+```
 
-All sorts of inputs are welcome, thanks!
+Feedback on improvements welcome - maybe there are some few functions to be added ;-)
 
 ---
 
