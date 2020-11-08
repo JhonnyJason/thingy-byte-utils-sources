@@ -43,17 +43,34 @@ utf8ToBufferBrowser = (utf8) ->
 
 utf8ToBufferNode = (utf8) -> Buffer.from(utf8, "utf8")
 
-
 ############################################################
 if typeof window == "object"
     exports.bufferToBigInt = bufferToBigInt
+    exports.bytesToBigInt = bufferToBigInt
+
     exports.bufferToUtf8 = bufferToUtf8
+    exports.bytesToUtf8 = bufferToUtf8
+
     exports.utf8ToBuffer = utf8ToBufferBrowser
+    exports.utf8ToBytes = utf8ToBufferBrowser
+
     exports.bufferToHex = bufferToHexBrowser
+    exports.bytesToHex = bufferToHexBrowser
+
     exports.hexToBuffer = hexToBufferBrowser
+    exports.hexToBytes = hexToBufferBrowser
 else
     exports.bufferToBigInt = bufferToBigInt
+    exports.bytesToBigInt = bufferToBigInt
+
     exports.bufferToUtf8 = bufferToUtf8
+    exports.bytesToUtf8 = bufferToUtf8
+
     exports.utf8ToBuffer = utf8ToBufferNode
+    exports.utf8ToBytes = utf8ToBufferNode
+
     exports.bufferToHex = bufferToHexNode
+    exports.bytesToHex = bufferToHexNode
+
     exports.hexToBuffer = hexToBufferNode
+    exports.hexToBytes = hexToBufferNode
