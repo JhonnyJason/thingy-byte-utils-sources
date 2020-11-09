@@ -14,9 +14,10 @@ bufferToBigInt = (byteBuffer) ->
     return value
 
 ############################################################
-bufferToUtf8 = (byteBuffer) -> 
+bufferToUtf8 = (byteBuffer) ->
     byteArray = new Uint8Array(byteBuffer)
     return String.fromCharCode.apply(null, byteArray)
+
 
 ############################################################
 bufferToHexBrowser = (byteBuffer) ->
@@ -35,13 +36,12 @@ hexToBufferBrowser = (hex) ->
 hexToBufferNode = (hex) -> Buffer.from(hex, 'hex')
     
 ############################################################
-utf8ToBufferBrowser = (utf8) ->
-    result = new Uint8Array(utf8.length)
-    for i in [0...utf8.length]
-        result[i] = utf8.charCodeAt(i)
-    return result.buffer
-
 utf8ToBufferNode = (utf8) -> Buffer.from(utf8, "utf8")
+
+utf8ToBufferBrowser = (utf8) ->  
+    bytes = (new TextEncoder()).encode(utf8)
+    return bytes.buffer
+
 
 ############################################################
 if typeof window == "object"
