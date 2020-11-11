@@ -1,3 +1,6 @@
 [submodule "source/byteutilsbrowser"]
 	path = source/byteutilsbrowser
 	url = git@github.com:JhonnyJason/thingy-byte-utils-sources-byteutilsbrowser.git
+[submodule "source/byteutilsnode"]
+	path = source/byteutilsnode
+	url = git@github.com:JhonnyJason/thingy-byte-utils-sources-byteutilsnode.git
