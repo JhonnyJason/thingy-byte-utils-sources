@@ -1,0 +1,3 @@
+[submodule "source/byteutilsbrowser"]
+	path = source/byteutilsbrowser
+	url = git@github.com:JhonnyJason/thingy-byte-utils-sources-byteutilsbrowser.git
