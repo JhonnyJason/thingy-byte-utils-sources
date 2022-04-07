@@ -1,21 +1,23 @@
 {
     "name": "thingy-byte-utils",
-    "version": "0.0.4",
+    "version": "0.0.5",
     "description": "Some utility functions for transforming bytes to other representations.",
     "main": "index.js",
+    "browser": "browser.js",
     "scripts": {
         "test": "echo \"Error: no test specified\" && exit 1"
     },
-    "keywords": [],
-    "author": "Lenard Frommelt lenard.frommelt@gne.or.at",
+    "keywords": ["byte-utils", "byte", "utils", "thingy"],
+    "author": "Lenard Frommelt lenard@frommelt.dev",
     "license": "Unlicense",
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/JhonnyJason/thingy-byte-utils-output.git"
+        "url": "git+https://github.com/JhonnyJason/thingy-byte-utils.git"
     },
     "bugs": {
         "url": "https://github.com/JhonnyJason/thingy-byte-utils/issues"
     },
     "homepage": "https://github.com/JhonnyJason/thingy-byte-utils-output/#readme",
-    "dependencies": {}
+    "dependencies": {},
+    "type": "module"
 }
