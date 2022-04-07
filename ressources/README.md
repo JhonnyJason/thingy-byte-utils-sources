@@ -4,7 +4,7 @@
 My usecases only required a minmal subset ot byte utility functions so I decided to create a more lightweight package for exactly those purposes.
 
 # What?
-- A very minimal package for byte handling
+- A very minimal package for byte conversion handling.
 - Uses native Buffer functions for NodeJS - then we also receive a Buffer Object as return value
 - Uses native BigInt
 
@@ -12,7 +12,7 @@ Current Functionality
 ---------------------
 
 ```coffeescript
-tbut = require("thingy-byte-utils") 
+import * as tbut from "thingy-byte-utils" 
 
 tbut.bytesToBigInt( ArrayBuffer | Buffer | Uint8Array ) -> BigInt
 
@@ -23,6 +23,13 @@ tbut.utf8ToBytes( String ) -> ArrayBuffer | Buffer
 tbut.bytesToUtf8( ArrayBuffer | Buffer | Uint8Array ) -> String
 
 ```
+Notice:
+
+- This is an unsafe library. This means it does not check for correct types or anything else.
+    You are responsible for checking types and format!
+- `bytesToBigInt§` on the Browser may only handle up to 256 bytes.
+- The hex values here donot come with the "0x" prefix. 
+- `hexToBytes§` will not work with the "0x" prefix.
 
 Feedback on improvements welcome - maybe there are some few functions to be added ;-)
 

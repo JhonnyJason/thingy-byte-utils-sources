@@ -5,6 +5,7 @@ decoder = new TextDecoder("utf-8")
 ############################################################
 slots = (new Array(256)).fill(0)
 hexMap = slots.map((el, idx) -> idx.toString(16).padStart(2, '0'))
+bigIntMap = slots.map((el,idx) -> BigInt(idx))
 
 ############################################################
 hexChars = Array.from("0123456789abcdef")
@@ -18,6 +19,13 @@ hexChars.forEach( (el) -> backHexMap[el] = parseInt(el, 16))
 
 
 ############################################################
+export bytesToBigInt = (byteBuffer) ->
+    byteBuffer = new Uint8Array(byteBuffer)
+    value = 0n
+    for byte,i in byteBuffer
+        value += bigIntMap[byte] << (8n * bigIntMap[i])
+    return value
+
 # export bytesToBigInt = (byteBuffer) ->
 #     byteBuffer = new Uint8Array(byteBuffer)
 #     value = 0n
@@ -25,10 +33,6 @@ hexChars.forEach( (el) -> backHexMap[el] = parseInt(el, 16))
 #         value += BigInt(byte) << (8n * BigInt(i))
 #     return value
 
-export bytesToBigInt = (byteBuffer) ->
-    byteBuffer = new Uint8Array(byteBuffer)
-    hex = bytesToHex(byteArray.reverse())
-    return BigInt("0x"+hex)
 
 
 ############################################################
