@@ -1,13 +1,18 @@
 {
     "name": "thingy-byte-utils",
-    "version": "0.0.5",
+    "version": "0.0.6",
     "description": "Some utility functions for transforming bytes to other representations.",
     "main": "index.js",
     "browser": "browser.js",
     "scripts": {
         "test": "echo \"Error: no test specified\" && exit 1"
     },
-    "keywords": ["byte-utils", "byte", "utils", "thingy"],
+    "keywords": [
+        "byte-utils",
+        "byte",
+        "utils",
+        "thingy"
+    ],
     "author": "Lenard Frommelt lenard@frommelt.dev",
     "license": "Unlicense",
     "repository": {
