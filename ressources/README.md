@@ -35,6 +35,8 @@ tbut.setPoolSize( Number )   // see "Results may share memory"
 
 Argument types are not checked. A function that expects a string must get a string, and a function that expects `Bytes` must get `Bytes`. Anything else is undefined behaviour: it may throw any error or return garbage. Check types at your own trust boundary.
 
+The one exception is `setPoolSize`, a configuration call outside the hot paths: it checks its argument (see below).
+
 ## Errors
 
 The *content* is always validated. Malformed content throws the same error type the platform's own equivalent throws (the message may differ between runtimes): a `SyntaxError` for hex (as `Uint8Array.fromHex`) and uvy, and a `TypeError` for UTF-8 (as a fatal `TextDecoder`).
@@ -105,7 +107,8 @@ Base 32 with the alphabet `0123456789abcdefghijklmnoprstuvy`. The first 16 digit
 tbut.setPoolSize( bytes )   // default 8192, 0 disables the pool
 ```
 
-- `bytes` is a non-negative integer. The new size applies at once: the current block is replaced. Results already returned stay valid, they keep their old block.
+- `bytes` must be a non-negative integer. Anything else (a negative or fractional number, `NaN`, a numeric string, ...) throws a `RangeError` and changes nothing: the current size and block stay in use.
+- The new size applies at once: the current block is replaced. Results already returned stay valid, they keep their old block.
 - With `0` every result, even an empty one, gets its own buffer, and the rules below no longer apply.
 
 While the pool is on:
@@ -114,6 +117,14 @@ While the pool is on:
 - The library never writes to a returned result again, so results stay stable. Writing to your result changes only your result.
 - A small result you keep alive also keeps its whole block alive. Use `.slice()` if you store many small results for a long time.
 - Pool results start at a `byteOffset` that is a multiple of 8.
+
+### The trade-off: speed for a shared `.buffer`
+
+Node's `Buffer` makes the same trade-off: `Buffer.from(string)`, `Buffer.allocUnsafe()` and others return views into a shared 8 KB pool too. The rules above are the ones every Node developer already follows for `Buffer`.
+
+What it means for sensitive data: the block under a result can hold other data than your result - other results, and leftovers of the library's own work (scratch data, partly decoded input of a call that threw). Anyone who gets the `.buffer` of a pooled result can read all of it. The library itself never reads or exposes that data, and it never changes a returned result.
+
+So if you hand bytes to code you do not control, or send or transfer them as an `ArrayBuffer`, pass a `.slice()` (or the view itself, never its `.buffer`). For applications that handle secrets and want to rule this out entirely, `setPoolSize(0)` turns the pool off, at the cost of one allocation per result (about 2 µs on V8 for small results).
 
 ---
 

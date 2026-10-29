@@ -46,9 +46,11 @@ function reserve(n) {
 }
 
 export function setPoolSize(bytes) {
-    POOL_SIZE = bytes
-    POOL_MAX = bytes ? bytes >>> 1 : -1 // 0: even empty results get their own buffer
+    // checked and allocated before anything changes - a bad size must not leave the pool half-configured
+    if (!Number.isSafeInteger(bytes) || bytes < 0) throw new RangeError("pool size must be a non-negative integer")
     pool = new Uint8Array(bytes)
+    POOL_SIZE = bytes
+    POOL_MAX = bytes ? Math.floor(bytes / 2) : -1 // 0: even empty results get their own buffer
     poolOffset = 0
 }
 
