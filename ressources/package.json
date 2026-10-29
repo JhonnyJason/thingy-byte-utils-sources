@@ -1,6 +1,6 @@
 {
     "name": "thingy-byte-utils",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "description": "Some utility functions for transforming bytes to and from other representations.",
     "exports": "./index.js",
     "keywords": [
