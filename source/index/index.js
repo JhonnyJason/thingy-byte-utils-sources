@@ -27,40 +27,10 @@ const uvyVal = new Uint8Array(128).fill(0xff)
 for (let i = 0; i < 32; i++) uvyVal[uvyCodes[i]] = uvyVal[uvyChars.toUpperCase().charCodeAt(i)] = i
 
 //############################################################
-//region pool
-// Small results are views into a shared 8 KB block, so V8's ~2 µs
-// allocation of off-heap arrays is paid once per block, not per call.
-// A full block is replaced, never reused - so results stay stable forever.
-let POOL_SIZE = 8192
-let POOL_MAX = POOL_SIZE >>> 1
-let pool = new Uint8Array(POOL_SIZE)
-let poolOffset = 0
-
-function reserve(n) {
-    // a transferred (detached) pool has length 0 and gets replaced here too,
-    // also for an empty result at offset 0
-    if (poolOffset + n > pool.length || pool.length == 0) {
-        pool = new Uint8Array(POOL_SIZE)
-        poolOffset = 0
-    }
-}
-
-export function setPoolSize(bytes) {
-    // checked and allocated before anything changes - a bad size must not leave the pool half-configured
-    if (!Number.isSafeInteger(bytes) || bytes < 0) throw new RangeError("pool size must be a non-negative integer")
-    pool = new Uint8Array(bytes)
-    POOL_SIZE = bytes
-    POOL_MAX = bytes ? Math.floor(bytes / 2) : -1 // 0: even empty results get their own buffer
-    poolOffset = 0
-}
-
-function commit(used) {
-    const result = pool.subarray(poolOffset, poolOffset + used)
-    poolOffset = (poolOffset + used + 7) & ~7 // keep 8-byte alignment like Buffer
-    return result
-}
-
-//endregion
+// private scratch for bytesToUvy: overwritten by every call, never returned,
+// so no result memory is shared - larger outputs get their own array
+const SCRATCH_SIZE = 16384 // chars - testing/README.md "bytesToUvy scratch size"
+const scratch = new Uint8Array(SCRATCH_SIZE)
 
 //############################################################
 const toU8 = (bytes) => bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes)
@@ -165,40 +135,16 @@ export function bytesToBigInt(bytes) {
 }
 
 //############################################################
-export const bytesToUtf8 = decoder ? (bytes) => decoder.decode(bytes) : (bytes) => jsUtf8Decode(toU8(bytes))
-
-export function utf8ToBytes(utf8) {
-    const max = utf8.length * 3
-    if (max > POOL_MAX) {
-        if (!encoder) {
-            const scratch = new Uint8Array(max)
-            return scratch.slice(0, jsUtf8Into(utf8, scratch, 0))
-        }
-        // TextEncoder would silently write U+FFFD for a lone surrogate
-        checkWellFormed(utf8)
-        return encoder.encode(utf8)
-    }
-    reserve(max)
-    // JS beats encodeInto for short strings on V8 (per-call cost)
-    if (utf8.length <= 32 || !encoder) return commit(jsUtf8Into(utf8, pool, poolOffset) - poolOffset)
-    checkWellFormed(utf8)
-    return commit(encoder.encodeInto(utf8, pool.subarray(poolOffset, poolOffset + max)).written)
+// browsers' TextDecoder throws for a shared or resizable buffer - retrying with a plain copy
+// costs nothing on the hot path, and invalid UTF-8 throws the same TypeError again
+function decodeUtf8(bytes) {
+    try { return decoder.decode(bytes) }
+    catch { return decoder.decode(toU8(bytes).slice()) }
 }
+export const bytesToUtf8 = decoder ? decodeUtf8 : (bytes) => jsUtf8Decode(toU8(bytes))
 
 //############################################################
 export const bytesToHex = hasToHex ? (bytes) => toU8(bytes).toHex() : (bytes) => jsBytesToHex(toU8(bytes))
-
-export function hexToBytes(hex) {
-    // the native functions throw here too - a silently dropped digit is hard to track down
-    if (hex.length & 1) throw new SyntaxError("hex string of odd length")
-    const n = hex.length >>> 1
-    if (n > POOL_MAX) return hasFromHex ? Uint8Array.fromHex(hex) : jsHexInto(hex, new Uint8Array(n))
-    reserve(n)
-    const result = commit(n)
-    if (hasSetFromHex) result.setFromHex(hex)
-    else jsHexInto(hex, result)
-    return result
-}
 
 //############################################################
 // the bytes as one big-endian number in base 32: full blocks of 5 bytes <-> 8 chars,
@@ -210,12 +156,7 @@ export function bytesToUvy(bytes) {
     const head = bytes.length % 5
     const headChars = (head * 8 + 4) / 5 | 0 // 0, 2, 4, 5 or 7
     const n = headChars + (bytes.length - head) / 5 * 8
-    let codes
-    if (n > POOL_MAX) codes = new Uint8Array(n)
-    else {
-        reserve(n)
-        codes = pool.subarray(poolOffset, poolOffset + n) // scratch, not committed
-    }
+    const codes = n > SCRATCH_SIZE ? new Uint8Array(n) : scratch.subarray(0, n)
     // at most 32 bits - a double holds them exactly
     let v = 0
     for (let i = 0; i < head; i++) v = v * 256 + bytes[i]
@@ -242,37 +183,112 @@ const uvyDigit = (uvy, i) => {
     return c < 128 ? uvyVal[c] : 0xff
 }
 
-export function uvyToBytes(uvy) {
-    // every string is a number: floor(L * 5 / 8) bytes but at least 1,
-    // one more if it does not fit - only the head block can overflow
-    const headChars = uvy.length & 7
-    let bad = 0, v = 0 // at most 35 bits - a double holds them exactly
-    for (let i = 0; i < headChars; i++) {
-        const d = uvyDigit(uvy, i)
-        bad |= d
-        v = v * 32 + d
+//############################################################
+//region pooled API
+// poolBytes 0: no pool, every result gets its own array (n > -1 always)
+// otherwise small results are views into a shared block, so V8's ~2 µs
+// allocation of off-heap arrays is paid once per block, not per call.
+// A full block is replaced, never reused - so results stay stable forever.
+function createApi(poolBytes) {
+    const POOL_MAX = poolBytes ? poolBytes >>> 1 : -1
+    let pool = new Uint8Array(poolBytes)
+    let poolOffset = 0
+
+    function reserve(n) {
+        // a transferred (detached) pool has length 0 and gets replaced here too,
+        // also for an empty result at offset 0
+        if (poolOffset + n > pool.length || pool.length == 0) {
+            pool = new Uint8Array(poolBytes)
+            poolOffset = 0
+        }
     }
-    let head = headChars * 5 >>> 3
-    if (v >= 2 ** (head * 8) || uvy.length == 1) head++
-    const n = head + (uvy.length - headChars) / 8 * 5
-    let result
-    if (n > POOL_MAX) result = new Uint8Array(n)
-    else {
+
+    function commit(used) {
+        const result = pool.subarray(poolOffset, poolOffset + used)
+        poolOffset = (poolOffset + used + 7) & ~7 // keep 8-byte alignment like Buffer
+        return result
+    }
+
+    function utf8ToBytes(utf8) {
+        const max = utf8.length * 3
+        if (max > POOL_MAX) {
+            if (!encoder) {
+                const buf = new Uint8Array(max)
+                return buf.slice(0, jsUtf8Into(utf8, buf, 0))
+            }
+            // TextEncoder would silently write U+FFFD for a lone surrogate
+            checkWellFormed(utf8)
+            return encoder.encode(utf8)
+        }
+        reserve(max)
+        // JS beats encodeInto for short strings on V8 (per-call cost)
+        if (utf8.length <= 32 || !encoder) return commit(jsUtf8Into(utf8, pool, poolOffset) - poolOffset)
+        checkWellFormed(utf8)
+        return commit(encoder.encodeInto(utf8, pool.subarray(poolOffset, poolOffset + max)).written)
+    }
+
+    function hexToBytes(hex) {
+        // the native functions throw here too - a silently dropped digit is hard to track down
+        if (hex.length & 1) throw new SyntaxError("hex string of odd length")
+        const n = hex.length >>> 1
+        if (n > POOL_MAX) return hasFromHex ? Uint8Array.fromHex(hex) : jsHexInto(hex, new Uint8Array(n))
         reserve(n)
-        result = commit(n)
+        const result = commit(n)
+        if (hasSetFromHex) result.setFromHex(hex)
+        else jsHexInto(hex, result)
+        return result
     }
-    for (let j = head - 1; j >= 0; j--, v = Math.floor(v / 256)) result[j] = v % 256
-    for (let i = headChars, j = head; i < uvy.length; i += 8, j += 5) {
-        const d0 = uvyDigit(uvy, i), d1 = uvyDigit(uvy, i + 1), d2 = uvyDigit(uvy, i + 2), d3 = uvyDigit(uvy, i + 3)
-        const d4 = uvyDigit(uvy, i + 4), d5 = uvyDigit(uvy, i + 5), d6 = uvyDigit(uvy, i + 6), d7 = uvyDigit(uvy, i + 7)
-        bad |= d0 | d1 | d2 | d3 | d4 | d5 | d6 | d7
-        const lo = (d1 & 3) << 30 | d2 << 25 | d3 << 20 | d4 << 15 | d5 << 10 | d6 << 5 | d7
-        result[j] = d0 << 3 | d1 >>> 2
-        result[j + 1] = lo >>> 24
-        result[j + 2] = lo >>> 16
-        result[j + 3] = lo >>> 8
-        result[j + 4] = lo
+
+    function uvyToBytes(uvy) {
+        // every string is a number: floor(L * 5 / 8) bytes but at least 1,
+        // one more if it does not fit - only the head block can overflow
+        const headChars = uvy.length & 7
+        let bad = 0, v = 0 // at most 35 bits - a double holds them exactly
+        for (let i = 0; i < headChars; i++) {
+            const d = uvyDigit(uvy, i)
+            bad |= d
+            v = v * 32 + d
+        }
+        let head = headChars * 5 >>> 3
+        if (v >= 2 ** (head * 8) || uvy.length == 1) head++
+        const n = head + (uvy.length - headChars) / 8 * 5
+        let result
+        if (n > POOL_MAX) result = new Uint8Array(n)
+        else {
+            reserve(n)
+            result = commit(n)
+        }
+        for (let j = head - 1; j >= 0; j--, v = Math.floor(v / 256)) result[j] = v % 256
+        for (let i = headChars, j = head; i < uvy.length; i += 8, j += 5) {
+            const d0 = uvyDigit(uvy, i), d1 = uvyDigit(uvy, i + 1), d2 = uvyDigit(uvy, i + 2), d3 = uvyDigit(uvy, i + 3)
+            const d4 = uvyDigit(uvy, i + 4), d5 = uvyDigit(uvy, i + 5), d6 = uvyDigit(uvy, i + 6), d7 = uvyDigit(uvy, i + 7)
+            bad |= d0 | d1 | d2 | d3 | d4 | d5 | d6 | d7
+            const lo = (d1 & 3) << 30 | d2 << 25 | d3 << 20 | d4 << 15 | d5 << 10 | d6 << 5 | d7
+            result[j] = d0 << 3 | d1 >>> 2
+            result[j + 1] = lo >>> 24
+            result[j + 2] = lo >>> 16
+            result[j + 3] = lo >>> 8
+            result[j + 4] = lo
+        }
+        if (bad > 31) throw new SyntaxError("uvy string with invalid char")
+        return result
     }
-    if (bad > 31) throw new SyntaxError("uvy string with invalid char")
-    return result
+
+    return { bytesToBigInt, bytesToUtf8, utf8ToBytes, bytesToHex, hexToBytes, bytesToUvy, uvyToBytes }
+}
+
+//endregion
+
+//############################################################
+// the direct API: no pool, every result owns its whole .buffer
+export const { utf8ToBytes, hexToBytes, uvyToBytes } = createApi(0)
+
+// opt-in pool, isolated per instance - results share memory (see README)
+export class UnsafeMemPooled {
+    constructor(kb = 8) {
+        // checked before anything is created
+        if (!Number.isInteger(kb) || kb < 1 || kb > 1024) throw new RangeError("pool size must be an integer from 1 to 1024 (KB)")
+        // closures, not methods: destructured functions keep working
+        Object.assign(this, createApi(kb * 1024))
+    }
 }

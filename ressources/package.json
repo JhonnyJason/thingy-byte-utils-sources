@@ -1,6 +1,6 @@
 {
     "name": "thingy-byte-utils",
-    "version": "0.1.1",
+    "version": "0.2.0",
     "description": "Some utility functions for transforming bytes to and from other representations.",
     "exports": "./index.js",
     "keywords": [
@@ -26,5 +26,6 @@
     },
     "homepage": "https://github.com/JhonnyJason/thingy-byte-utils-output/#readme",
     "dependencies": {},
-    "type": "module"
+    "type": "module",
+    "sideEffects": false
 }

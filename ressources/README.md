@@ -17,10 +17,21 @@ tbut.uvyToBytes( String ) -> Uint8Array
 
 tbut.bytesToBigInt( Bytes ) -> BigInt
 
-tbut.setPoolSize( Number )   // see "Results may share memory"
+const pooled = new tbut.UnsafeMemPooled( KB )   // same functions, faster on V8 - see "UnsafeMemPooled"
 ```
 
 `Bytes` is a `Uint8Array` (including a Node `Buffer` or a view with an offset) or an `ArrayBuffer`.
+
+TypeScript types are included (`index.d.ts`, TypeScript 5.7 or newer). Results are typed `Uint8Array<ArrayBuffer>`, as they never sit on a `SharedArrayBuffer`, so they pass directly as a WebCrypto `BufferSource`.
+
+### Also accepted, not recommended: shared and resizable buffers
+
+A `SharedArrayBuffer`, a resizable `ArrayBuffer`, or a `Uint8Array` over one of them is accepted too, for convenience. Prefer passing a `.slice()` of the bytes you mean, for two reasons:
+
+- **Slow `bytesToUtf8` in browsers.** The browsers' `TextDecoder` rejects these buffers, so the library catches that error and decodes a copy. Every such call pays for a thrown error and a copy. Node, Deno and Bun take the fast path for them.
+- **Concurrent writes are your responsibility.** If another thread writes to shared memory during a call, the result is undefined: strict decoding may throw on half-written data, or return a mix of old and new bytes. The guarantees below assume the input does not change during the call.
+
+Usually you want a view of one region anyway: passing a raw `SharedArrayBuffer` converts all of its memory.
 
 ---
 
@@ -35,7 +46,7 @@ tbut.setPoolSize( Number )   // see "Results may share memory"
 
 Argument types are not checked. A function that expects a string must get a string, and a function that expects `Bytes` must get `Bytes`. Anything else is undefined behaviour: it may throw any error or return garbage. Check types at your own trust boundary.
 
-The one exception is `setPoolSize`, a configuration call outside the hot paths: it checks its argument (see below).
+The one exception is the `UnsafeMemPooled` constructor, a configuration call outside the hot paths: it checks its argument (see below).
 
 ## Errors
 
@@ -99,19 +110,23 @@ Base 32 with the alphabet `0123456789abcdefghijklmnoprstuvy`. The first 16 digit
 
 ---
 
-## Results may share memory
+## UnsafeMemPooled: results that share memory
 
-`hexToBytes`, `utf8ToBytes` and `uvyToBytes` return small results (half the block size or less) as views into a shared memory block. Larger results get their own buffer. This avoids an allocation per call, which is expensive on V8.
+The direct functions never share memory: every result of `hexToBytes`, `utf8ToBytes` and `uvyToBytes` has its own `ArrayBuffer`, with `byteOffset` 0. That costs one allocation per result, about 2 µs on V8 for small results.
+
+`UnsafeMemPooled` saves that allocation. Its instance has the same functions, but small results (half the block or less) are views into a shared memory block. Larger results get their own buffer.
 
 ```js
-tbut.setPoolSize( bytes )   // default 8192, 0 disables the pool
+const pooled = new tbut.UnsafeMemPooled( KB )   // block size in KB, default 8
+pooled.hexToBytes("aabb")
+const { utf8ToBytes } = pooled                  // destructuring works
 ```
 
-- `bytes` must be a non-negative integer. Anything else (a negative or fractional number, `NaN`, a numeric string, ...) throws a `RangeError` and changes nothing: the current size and block stay in use.
-- The new size applies at once: the current block is replaced. Results already returned stay valid, they keep their old block.
-- With `0` every result, even an empty one, gets its own buffer, and the rules below no longer apply.
+- `KB` must be an integer from 1 to 1024. No argument means 8 (8 KB, as Node's `Buffer` pool). Anything else (0, 1025, 1.5, `NaN`, `"8"`, ...) throws a `RangeError` and no instance is created.
+- Every instance has its own pool. Instances never affect each other or the direct functions, so each consumer in an application can tune its own instance.
+- When to use it: hot paths on V8 (Node, Deno, Chromium) with many small results - up to about 10x faster for results up to 64 B. On Bun and Firefox the view costs more than the allocation, so the direct functions are faster there (measured: `testing/README.md` in the repository).
 
-While the pool is on:
+Rules for pooled results:
 - **Use the `Uint8Array` itself, never its `.buffer`.** The buffer is the shared block and holds other results. Do not assume `byteOffset` is 0.
 - **Use `.slice()` when you need your own copy**, for example before transferring it to a worker. Transferring `.buffer` detaches every other result in the same block.
 - The library never writes to a returned result again, so results stay stable. Writing to your result changes only your result.
@@ -122,9 +137,9 @@ While the pool is on:
 
 Node's `Buffer` makes the same trade-off: `Buffer.from(string)`, `Buffer.allocUnsafe()` and others return views into a shared 8 KB pool too. The rules above are the ones every Node developer already follows for `Buffer`.
 
-What it means for sensitive data: the block under a result can hold other data than your result - other results, and leftovers of the library's own work (scratch data, partly decoded input of a call that threw). Anyone who gets the `.buffer` of a pooled result can read all of it. The library itself never reads or exposes that data, and it never changes a returned result.
+What it means for sensitive data: the block under a pooled result can hold other data than your result - other results, and leftovers of the library's own work (partly decoded input of a call that threw). Anyone who gets the `.buffer` of a pooled result can read all of it. The library itself never reads or exposes that data, and it never changes a returned result.
 
-So if you hand bytes to code you do not control, or send or transfer them as an `ArrayBuffer`, pass a `.slice()` (or the view itself, never its `.buffer`). For applications that handle secrets and want to rule this out entirely, `setPoolSize(0)` turns the pool off, at the cost of one allocation per result (about 2 µs on V8 for small results).
+So if you hand pooled bytes to code you do not control, or send or transfer them as an `ArrayBuffer`, pass a `.slice()` (or the view itself, never its `.buffer`). For secrets, use the direct functions: they never share memory.
 
 ---
 
